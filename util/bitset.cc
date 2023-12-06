@@ -59,11 +59,14 @@ Bitset::~Bitset() {
   dataSize = 0;
   allocSize = 0;
 }
-
+/// @brief 测试第idx位是否使用
+/// @param idx 
+/// @return true表示已使用
 bool Bitset::test(uint32_t idx) noexcept {
   return data[idx / 8] & (0x01 << (idx % 8));
 }
-
+/// @brief 判断是否已全部使用
+/// @return true表示已全部使用
 bool Bitset::all() noexcept {
   uint8_t ret = 0xFF;
   uint8_t mask = 0xFF << (dataSize + 8 - allocSize * 8);
@@ -76,11 +79,13 @@ bool Bitset::all() noexcept {
 
   return ret == 0xFF;
 }
-
+/// @brief 判断是否存在已使用的的
+/// @return true表示存在
 bool Bitset::any() noexcept {
   return !none();
 }
-
+/// @brief 判断是否全部空闲
+/// @return true表示全部空闲
 bool Bitset::none() noexcept {
   uint8_t ret = 0x00;
 

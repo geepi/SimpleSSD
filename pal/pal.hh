@@ -30,16 +30,16 @@ namespace PAL {
 class AbstractPAL;
 
 typedef struct {
-  uint32_t channel;          //!< Total # channels
-  uint32_t package;          //!< # packages / channel
-  uint32_t die;              //!< # dies / package
-  uint32_t plane;            //!< # planes / die
-  uint32_t block;            //!< # blocks / plane
-  uint32_t page;             //!< # pages / block
-  uint32_t superBlock;       //!< Total super blocks
-  uint32_t pageSize;         //!< Size of page in bytes
-  uint32_t superPageSize;    //!< Size of super page in bytes
-  uint32_t pageInSuperPage;  //!< # pages in one superpage
+  uint32_t channel;          //!< Total # channels 12(intel750_400gb)
+  uint32_t package;          //!< # packages / channel 5
+  uint32_t die;              //!< # dies / package 8
+  uint32_t plane;            //!< # planes / die 1
+  uint32_t block;            //!< # blocks / plane 512
+  uint32_t page;             //!< # pages / block 512
+  uint32_t superBlock;       //!< Total super blocks 2560
+  uint32_t pageSize;         //!< Size of page in bytes 4096
+  uint32_t superPageSize;    //!< Size of super page in bytes 4096*96
+  uint32_t pageInSuperPage;  //!< # pages in one superpage 96
 } Parameter;
 
 class PAL : public StatObject {

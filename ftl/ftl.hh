@@ -31,12 +31,12 @@ namespace FTL {
 class AbstractFTL;
 
 typedef struct {
-  uint64_t totalPhysicalBlocks;  //!< (PAL::Parameter::superBlock)
-  uint64_t totalLogicalBlocks;
-  uint64_t pagesInBlock;  //!< (PAL::Parameter::page)
-  uint32_t pageSize;      //!< Mapping unit (PAL::Parameter::superPageSize)
-  uint32_t ioUnitInPage;  //!< # smallest I/O unit in one page
-  uint32_t pageCountToMaxPerf;  //!< # pages to fully utilize internal parallism
+  uint64_t totalPhysicalBlocks;  //!< (PAL::Parameter::superBlock)等于超级块的数量2560
+  uint64_t totalLogicalBlocks; // 减除OverProvision后的物理块总数 1990
+  uint64_t pagesInBlock;  //!< (PAL::Parameter::page) 512
+  uint32_t pageSize;      //!< Mapping unit (PAL::Parameter::superPageSize) 4096*96=393216 超级页的大小
+  uint32_t ioUnitInPage;  //!< # smallest I/O unit in one page 96 注释应该是说一个page最多可以分为多少个unit？
+  uint32_t pageCountToMaxPerf;  //!< # pages to fully utilize internal parallism 5
 } Parameter;
 
 class FTL : public StatObject {

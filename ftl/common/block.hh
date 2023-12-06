@@ -36,7 +36,7 @@ class Block {
   uint32_t ioUnitInPage;
   uint32_t *pNextWritePageIndex;
 
-  // Following variables are used when ioUnitInPage == 1
+  // Following variables are used when ioUnitInPage == 1尝试改为Union？
   Bitset *pValidBits;
   Bitset *pErasedBits;
   uint64_t *pLPNs;
@@ -44,7 +44,7 @@ class Block {
   // Following variables are used when ioUnitInPage > 1
   std::vector<Bitset> validBits;
   std::vector<Bitset> erasedBits;
-  uint64_t **ppLPNs;
+  uint64_t **ppLPNs;//二维数组，长为page数量，宽为ioUnitInPage
 
   uint64_t lastAccessed;
   uint32_t eraseCount;

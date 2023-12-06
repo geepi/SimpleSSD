@@ -38,7 +38,7 @@ PageMapping::PageMapping(ConfigReader &c, Parameter &p, PAL::PAL *l,
       lastFreeBlock(param.pageCountToMaxPerf),
       lastFreeBlockIOMap(param.ioUnitInPage),
       bReclaimMore(false) {
-  blocks.reserve(param.totalPhysicalBlocks);
+  blocks.reserve(param.totalPhysicalBlocks);//预留足够的空间
   table.reserve(param.totalLogicalBlocks * param.pagesInBlock);
 
   for (uint32_t i = 0; i < param.totalPhysicalBlocks; i++) {
@@ -105,7 +105,7 @@ bool PageMapping::initialize() {
              nPagesToInvalidate,
              nPagesToInvalidate * 100.f / nTotalLogicalPages);
 
-  req.ioFlag.set();
+  req.ioFlag.set();//全部置1
 
   // Step 1. Filling
   if (mode == FILLING_MODE_0 || mode == FILLING_MODE_1) {
@@ -139,7 +139,7 @@ bool PageMapping::initialize() {
     }
   }
   else if (mode == FILLING_MODE_1) {
-    // Random
+    // Random 生成的随机数范围不同
     // We can successfully restrict range of LPN to create exact number of
     // invalid pages because we wrote in sequential mannor in step 1.
     std::random_device rd;
@@ -347,7 +347,7 @@ uint32_t PageMapping::getFreeBlock(uint32_t idx) {
 }
 
 uint32_t PageMapping::getLastFreeBlock(Bitset &iomap) {
-  if (!bRandomTweak || (lastFreeBlockIOMap & iomap).any()) {
+  if (!bRandomTweak || (lastFreeBlockIOMap & iomap).any()) {// lastFreeBlockIOMap不满足需求，寻找下一个free block
     // Update lastFreeBlockIndex
     lastFreeBlockIndex++;
 
@@ -685,10 +685,10 @@ void PageMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
         auto &mapping = mappingList->second.at(idx);
 
         if (mapping.first < param.totalPhysicalBlocks &&
-            mapping.second < param.pagesInBlock) {
+            mapping.second < param.pagesInBlock) {  // true表示ioUnit已写入，需要invalid (mapping.first = block id; mapping.second = page id)
           block = blocks.find(mapping.first);
 
-          // Invalidate current page
+          // Invalidate current page（准确说是invalidate current page的第idx个ioUnit）
           block->second.invalidate(mapping.second, idx);
         }
       }
@@ -699,7 +699,7 @@ void PageMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
     auto ret = table.emplace(
         req.lpn,
         std::vector<std::pair<uint32_t, uint32_t>>(
-            bitsetSize, {param.totalPhysicalBlocks, param.pagesInBlock}));
+            bitsetSize, {param.totalPhysicalBlocks, param.pagesInBlock})); //{xx,xx}初始值设置为最大值，用于判断对应的ioUnit是否已写入
 
     if (!ret.second) {
       panic("Failed to insert new mapping");

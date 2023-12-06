@@ -32,9 +32,9 @@ namespace SimpleSSD {
 // TODO: use SIMD operation if possible
 class Bitset {
  private:
-  uint8_t *data;
-  uint32_t dataSize;
-  uint32_t allocSize;
+  uint8_t *data; // uint8_t类型的数组，数组长度为ioUnitInPage/8；uint8_t表示8个bit的使用情况
+  uint32_t dataSize; // 有效的bit数量
+  uint32_t allocSize; // data数组长度
 
  public:
   Bitset();

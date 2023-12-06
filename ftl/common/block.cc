@@ -43,12 +43,12 @@ Block::Block(uint32_t blockIdx, uint32_t count, uint32_t ioUnit)
     pLPNs = (uint64_t *)calloc(pageCount, sizeof(uint64_t));
   }
   else if (ioUnitInPage > 1) {
-    Bitset copy(ioUnitInPage);
+    Bitset copy(ioUnitInPage);//单个copy表示一个page的units空闲情况
 
     validBits = std::vector<Bitset>(pageCount, copy);
     erasedBits = std::vector<Bitset>(pageCount, copy);
 
-    ppLPNs = (uint64_t **)calloc(pageCount, sizeof(uint64_t *));
+    ppLPNs = (uint64_t **)calloc(pageCount, sizeof(uint64_t *));//512*96
 
     for (uint32_t i = 0; i < pageCount; i++) {
       ppLPNs[i] = (uint64_t *)calloc(ioUnitInPage, sizeof(uint64_t));

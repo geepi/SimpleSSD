@@ -38,12 +38,12 @@ PAL::PAL(ConfigReader &c) : conf(c) {
   param.block = conf.readUint(CONFIG_PAL, NAND_BLOCK);
   param.page = conf.readUint(CONFIG_PAL, NAND_PAGE);
   param.pageSize = conf.readUint(CONFIG_PAL, NAND_PAGE_SIZE);
-  param.superBlock = param.block;
-  param.superPageSize = param.pageSize;
+  param.superBlock = param.block;//512
+  param.superPageSize = param.pageSize;//4096
 
-  // Super block includes channel
+  // Super block includes channel (SuperblockSize = CD)
   if (superblock & INDEX_CHANNEL) {
-    param.superPageSize *= param.channel;
+    param.superPageSize *= param.channel;//4096*12
     value[0] = param.channel;
   }
   else {
@@ -56,12 +56,12 @@ PAL::PAL(ConfigReader &c) : conf(c) {
     value[1] = param.package;
   }
   else {
-    param.superBlock *= param.package;
+    param.superBlock *= param.package;//512*5
   }
 
   // Super block includes die
   if (superblock & INDEX_DIE) {
-    param.superPageSize *= param.die;
+    param.superPageSize *= param.die;//4096*12*8
     value[2] = param.die;
   }
   else {
@@ -75,13 +75,13 @@ PAL::PAL(ConfigReader &c) : conf(c) {
     value[3] = param.plane;
   }
   else {
-    param.superBlock *= param.plane;
+    param.superBlock *= param.plane;//512*5*1=2560
   }
 
   // Partial I/O tweak
-  param.pageInSuperPage = param.superPageSize / param.pageSize;
+  param.pageInSuperPage = param.superPageSize / param.pageSize;//4096*12*8/4096=96
 
-  // TODO: If PAL revised, this code may not needed
+  // TODO: If PAL revised, this code may not needed (false)
   if (conf.readBoolean(CONFIG_PAL, NAND_USE_MULTI_PLANE_OP)) {
     param.pageInSuperPage /= param.plane;
   }
