@@ -20,6 +20,7 @@
 #include "ftl/ftl.hh"
 
 #include "ftl/page_mapping.hh"
+#include "ftl/group_mapping.hh"
 
 namespace SimpleSSD {
 
@@ -38,11 +39,14 @@ FTL::FTL(ConfigReader &c, DRAM::AbstractDRAM *d) : conf(c), pDRAM(d) {
   param.pagesInBlock = palparam->page;
   param.pageSize = palparam->superPageSize;
   param.ioUnitInPage = palparam->pageInSuperPage;
-  param.pageCountToMaxPerf = palparam->superBlock / palparam->block;
+  param.pageCountToMaxPerf = palparam->superBlock / palparam->block;//5=2560/512(equal to package)
 
   switch (conf.readInt(CONFIG_FTL, FTL_MAPPING_MODE)) {
     case PAGE_MAPPING:
       pFTL = new PageMapping(conf, param, pPAL, pDRAM);
+      break;
+    case GROUP_MAPPING:
+      pFTL = new GroupMapping(conf, param, pPAL, pDRAM);
       break;
   }
 
