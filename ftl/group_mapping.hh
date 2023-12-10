@@ -19,10 +19,11 @@ class GroupMapping : public AbstractFTL {
   PAL::PAL *pPAL;
 
   ConfigReader &conf;
-  // address mapping table: LPN（逻辑页）->vector<block index,page index>（当bRandomTweak=false时是一一对应的）
-  // vector长度等于bitsetSize
-  std::unordered_map<uint64_t, std::vector<std::pair<uint32_t, uint32_t>>>
-      table;
+  // address mapping table: LPN（逻辑页）->vector<block index,page
+  // index>（当bRandomTweak=false时是一一对应的） vector长度等于bitsetSize
+  std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>> table;
+  // 统计lpn已映射的subpage数量（递增）
+  std::unordered_map<uint64_t, std::pair<uint32_t,uint32_t>> baseAndDeltaCounts;//second初始-1 TODO：若req.idx不是按顺序出现，那必须更换数据结构
   // （映射中的）block index 映射的Block instance
   std::unordered_map<uint32_t, Block> blocks;
   // 空闲物理块列表
@@ -32,10 +33,12 @@ class GroupMapping : public AbstractFTL {
   // vector长度等于可以充分并行的page数量（pageCountToMaxPerf=5），优先存放可以并发的块号
   std::vector<uint32_t> lastFreeBlock;
   Bitset lastFreeBlockIOMap;
-  uint32_t lastFreeBlockIndex;
+  uint32_t lastFreeBlockIndex;//这是数组下标
+  uint32_t lastBlockIdx;//这是上次使用的块号
+  std::unordered_map<uint64_t, std::vector<uint32_t>> requestCnt;
 
   bool bReclaimMore;
-  bool bRandomTweak;  // true
+  bool bRandomTweak;    // true
   uint32_t bitsetSize;  // 96(bRandomTweak ? param.ioUnitInPage : 1)
 
   struct {
@@ -82,7 +85,7 @@ class GroupMapping : public AbstractFTL {
 
   void getStatList(std::vector<Stats> &, std::string) override;
   /// @brief 获取状态（gcCount/reclaimedBlocks/validSuperPageCopies）等
-  /// @param  
+  /// @param
   void getStatValues(std::vector<double> &) override;
   void resetStatValues() override;
 };

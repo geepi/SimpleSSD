@@ -44,7 +44,7 @@ class Block {
   // Following variables are used when ioUnitInPage > 1
   std::vector<Bitset> validBits;
   std::vector<Bitset> erasedBits;
-  uint64_t **ppLPNs;//二维数组，长为page数量，宽为ioUnitInPage
+  uint64_t **ppLPNs;  // 二维数组，长为page数量，宽为ioUnitInPage
 
   uint64_t lastAccessed;
   uint32_t eraseCount;
@@ -58,6 +58,8 @@ class Block {
   Block &operator=(const Block &);  // Copy assignment
   Block &operator=(Block &&);       // Move assignment
 
+  const Bitset &getValidBits(uint32_t);
+  Bitset &getErasedBits(uint32_t);
   uint32_t getBlockIndex() const;
   uint64_t getLastAccessedTime();
   uint32_t getEraseCount();

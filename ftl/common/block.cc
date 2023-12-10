@@ -43,12 +43,12 @@ Block::Block(uint32_t blockIdx, uint32_t count, uint32_t ioUnit)
     pLPNs = (uint64_t *)calloc(pageCount, sizeof(uint64_t));
   }
   else if (ioUnitInPage > 1) {
-    Bitset copy(ioUnitInPage);//单个copy表示一个page的units空闲情况
+    Bitset copy(ioUnitInPage);  // 单个copy表示一个page的units空闲情况
 
     validBits = std::vector<Bitset>(pageCount, copy);
     erasedBits = std::vector<Bitset>(pageCount, copy);
 
-    ppLPNs = (uint64_t **)calloc(pageCount, sizeof(uint64_t *));//512*96
+    ppLPNs = (uint64_t **)calloc(pageCount, sizeof(uint64_t *));  // 512*96
 
     for (uint32_t i = 0; i < pageCount; i++) {
       ppLPNs[i] = (uint64_t *)calloc(ioUnitInPage, sizeof(uint64_t));
@@ -172,6 +172,23 @@ Block &Block::operator=(Block &&rhs) {
   }
 
   return *this;
+}
+const Bitset& Block::getValidBits(uint32_t idx) {
+  if (ioUnitInPage > 1) {
+    return validBits[idx];
+  }
+  else {
+    return *pValidBits;
+  }
+}
+
+Bitset& Block::getErasedBits(uint32_t idx) {
+  if (ioUnitInPage > 1) {
+    return erasedBits[idx];
+  }
+  else {
+    return *pErasedBits;
+  }
 }
 
 uint32_t Block::getBlockIndex() const {
@@ -306,9 +323,9 @@ bool Block::write(uint32_t pageIndex, uint64_t lpn, uint32_t idx,
   }
 
   if (write) {
-    if (pageIndex < pNextWritePageIndex[idx]) {
-      panic("Write to block should sequential");
-    }
+    // if (pageIndex < pNextWritePageIndex[idx]) {
+    //   panic("Write to block should sequential");
+    // }
 
     lastAccessed = tick;
 
@@ -325,7 +342,7 @@ bool Block::write(uint32_t pageIndex, uint64_t lpn, uint32_t idx,
       ppLPNs[pageIndex][idx] = lpn;
     }
 
-    pNextWritePageIndex[idx] = pageIndex + 1;
+    pNextWritePageIndex[idx] = pageIndex + 1;//更新
   }
   else {
     panic("Write to non erased page");
