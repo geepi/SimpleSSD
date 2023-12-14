@@ -11,7 +11,6 @@ namespace SimpleSSD {
 
 namespace FTL {
 
-const double baseRatio = 0.5;  // TODO: 改为通过cfg配置的参数
 GroupMapping::GroupMapping(ConfigReader &c, Parameter &p, PAL::PAL *l,
                            DRAM::AbstractDRAM *d)
     : AbstractFTL(p, l, d),
@@ -22,7 +21,7 @@ GroupMapping::GroupMapping(ConfigReader &c, Parameter &p, PAL::PAL *l,
       bReclaimMore(false) {
   blocks.reserve(param.totalPhysicalBlocks);  // 预留足够的空间
   table.reserve(param.totalLogicalBlocks);
-  baseAndDeltaCounts.reserve(param.totalLogicalBlocks);
+  groupUsedIoUnit.reserve(param.totalLogicalBlocks);
   // table.reserve(param.totalLogicalBlocks * param.pagesInBlock);
   requestCnt.reserve(param.totalPhysicalBlocks);
   for (uint32_t i = 0; i < param.totalPhysicalBlocks; i++) {
@@ -39,6 +38,7 @@ GroupMapping::GroupMapping(ConfigReader &c, Parameter &p, PAL::PAL *l,
   }
 
   lastFreeBlockIndex = 0;
+  lastBlockIdx = 0;
 
   memset(&stat, 0, sizeof(stat));
 
@@ -47,14 +47,14 @@ GroupMapping::GroupMapping(ConfigReader &c, Parameter &p, PAL::PAL *l,
 }
 
 GroupMapping::~GroupMapping() {
-  for (auto cnt : requestCnt) {
-    std::cerr << cnt.first << ": ";
-    for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
-      if (cnt.second[idx] > 0) {
-        std::cerr << idx << " " << cnt.second[idx] << endl;
-      }
-    }
-  }
+  // for (auto cnt : requestCnt) {
+  //   std::cerr << cnt.first << ": ";
+  //   for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
+  //     if (cnt.second[idx] > 0) {
+  //       std::cerr << idx << " " << cnt.second[idx] << endl;
+  //     }
+  //   }
+  // }
 }
 
 bool GroupMapping::initialize() {
@@ -196,6 +196,9 @@ void GroupMapping::read(Request &req, uint64_t &tick) {
 
 void GroupMapping::write(Request &req, uint64_t &tick) {
   uint64_t begin = tick;
+  if (tick == 2956140698755) {
+    printf("haha");
+  }
   if (req.ioFlag.count() > 0) {
     writeInternal(req, tick);
 
@@ -249,7 +252,7 @@ void GroupMapping::format(LPNRange &range, uint64_t &tick) {
       }
 
       iter = table.erase(iter);
-      baseAndDeltaCounts.erase(iter->first);
+      groupUsedIoUnit.erase(iter->first);
     }
     else {
       iter++;
@@ -673,41 +676,46 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
   uint64_t finishedAt = tick;
   bool readBeforeWrite = false;
   bool isNeedNewBlock = false;
+  if (finishedAt == 279715346347) {
+    std::cerr << "yaya " << std::endl;
+  }
+  // for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+  //   if (req.ioFlag.test(idx)) {
+  //     if (idx == 48 && req.lpn == 2927290)
+  //       std::cerr << "yaya " << std::endl;
+  //     // std::cerr << idx << " ";
+  //   }
+  // }
   if (mappingList != table.end()) {
-    for (uint32_t idx = 0; idx < bitsetSize; idx++) {
-      if (req.ioFlag.test(idx) || !bRandomTweak) {
-        auto &mapping = mappingList->second;
-        if (baseAndDeltaCounts.find(req.lpn) != baseAndDeltaCounts.end()) {
-          uint32_t baseCount = baseAndDeltaCounts[req.lpn].first;
-          uint32_t deltaCount = baseAndDeltaCounts[req.lpn].second;
-          if ((idx < 48 && baseCount >= idx) ||
-              (idx >= 48 &&
-               deltaCount >=
-                   idx)) {  // TODO：48是硬编码！需修改 可能存在追加写base
-                            // page的情况，如何处理？
-            block = blocks.find(mapping.first);
+    auto &mapping = mappingList->second;
+    if (groupUsedIoUnit.find(req.lpn) != groupUsedIoUnit.end()) {
+      Bitset used = groupUsedIoUnit[req.lpn];
+      if (mapping.first == 0 && mapping.second == 1) {
+        // for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+        //   if (used.test(idx))
+        //     std::cerr << idx << " ";
+        // }
+      }
 
-            // 整superPage都标记为无效 TODO
-            Bitset &tmp = block->second.getErasedBits(mapping.second);
-            tmp.set();
-
-            for (uint32_t idx = 0; idx < bitsetSize; idx++) {
-              block->second.invalidate(mapping.second, idx);
-            }
-            isNeedNewBlock = true;
-            baseAndDeltaCounts[req.lpn].first = -1;
-            baseAndDeltaCounts[req.lpn].second = 47;
-          }
+      // 本次请求涉及重写ioUnit（有新的数据重用了lpn），旧page标记为invalid
+      if ((req.ioFlag & used).any() || !bRandomTweak) {
+        block = blocks.find(mapping.first);
+        // 整superPage都标记为无效 TODO
+        block->second.getErasedBits(mapping.second).set();
+        for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+          block->second.invalidate(mapping.second, idx);
         }
+        isNeedNewBlock = true;
+        groupUsedIoUnit[req.lpn].reset();
+        requestCnt[req.lpn].clear();
       }
     }
   }
   else {
     // 必须是idx=0的请求才可以分配一个superPage，其余情况属于不合规范的负载，不予操作！
     if (!req.ioFlag.test(0)) {
-      return;
+      return;  // TODO：统计丢弃的次数，丢弃的idx
     }
-
     // Create empty mapping
     auto ret = table.emplace(
         req.lpn, make_pair(param.totalPhysicalBlocks, param.pagesInBlock));
@@ -717,7 +725,8 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
     mappingList = ret.first;
 
     isNeedNewBlock = true;
-    baseAndDeltaCounts.emplace(req.lpn, make_pair(-1, 47));  // TODO：硬编码
+    groupUsedIoUnit.emplace(req.lpn,
+                            Bitset(param.ioUnitInPage));  // TODO：硬编码
   }
   // 这里要固定的原因是，假设一个group的请求如果中间插入了其他组的请求，那么这个组有可能会写到两个块上
   // 上次分配的块并不是这个映射项记录的块，这种情况保证一定有空闲空间所以不需要iomap记录
@@ -726,7 +735,7 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
   }
   else {
     // 必须是idx=0的请求才可以分配一个superPage，其余情况属于不合规范的负载，不予操作！
-    if (!req.ioFlag.test(0)) {
+    if (isNeedNewBlock && !req.ioFlag.test(0)) {
       return;
     }
     block = blocks.find(getLastFreeBlock(req.ioFlag));
@@ -755,40 +764,20 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
 
   uint32_t pageIndex =
       isNeedNewBlock ? block->second.getNextWritePageIndex(0) : mapping.second;
+  // if (block->first == 0) {
+  //   std::cerr << block->second.getNextWritePageIndex(0) << std::endl;
+  //   if (block->second.getNextWritePageIndex(0) == 205) {
+  //     printf("jaja");
+  //   }
+  // }
   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
     if (req.ioFlag.test(idx) || !bRandomTweak) {
       beginAt = tick;
       requestCnt[req.lpn].push_back(idx);
-
-      // check whether page is written sequentiallyTODO：硬编码
-      if (idx < 48) {
-        baseAndDeltaCounts[req.lpn].first++;
-        if (baseAndDeltaCounts[req.lpn].first != idx) {
-          std::cerr << baseAndDeltaCounts[req.lpn].first << " " << idx
-                    << std::endl;
-          std::cerr << "Write page sequence fault" << std::endl;
-          // panic("Write page sequence fault");
-        }
-        if (baseAndDeltaCounts[req.lpn].second >= 48) {
-          std::cerr << idx << " " << baseAndDeltaCounts[req.lpn].first << " "
-                    << baseAndDeltaCounts[req.lpn].second << std::endl;
-          std::cerr << "Unable to append base page" << std::endl;
-          return;
-        }
+      if (groupUsedIoUnit[req.lpn].test(idx)) {
+        panic("Write to already used page");
       }
-      else {
-        baseAndDeltaCounts[req.lpn].second++;
-        if (baseAndDeltaCounts[req.lpn].second != idx) {
-          std::cerr << baseAndDeltaCounts[req.lpn].second << " " << idx
-                    << std::endl;
-          std::cerr << "Write page sequence fault" << std::endl;
-        }
-        // if (baseAndDeltaCounts[req.lpn].first < 1) {
-        //   std::cerr << "Unable to append delta page" << std::endl;
-        //   return;
-        // }
-      }
-
+      groupUsedIoUnit[req.lpn].set(idx);
       block->second.write(pageIndex, req.lpn, idx, beginAt);
 
       // Read old data if needed (Only executed when bRandomTweak = false)
@@ -829,10 +818,14 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
     }
   }
 
-  if (block->first == 3 && pageIndex == 90) {
+  if (block->first == 0 && pageIndex == 1) {
     std::cerr << "****************" << std::endl;
     for (uint32_t idx = 0; idx < requestCnt[req.lpn].size(); idx++) {
       std::cerr << idx << " " << requestCnt[req.lpn][idx] << std::endl;
+    }
+    for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
+      if (groupUsedIoUnit[req.lpn].test(idx))
+        std::cerr << idx << " used" << std::endl;
     }
     Bitset tmp = block->second.getValidBits(pageIndex);
     Bitset tmp2 = block->second.getErasedBits(pageIndex);
@@ -905,7 +898,7 @@ void GroupMapping::trimInternal(Request &req, uint64_t &tick) {
 
     // Remove mapping
     table.erase(mappingList);
-    baseAndDeltaCounts.erase(req.lpn);
+    groupUsedIoUnit.erase(req.lpn);
 
     tick += applyLatency(CPU::FTL__PAGE_MAPPING, CPU::TRIM_INTERNAL);
   }

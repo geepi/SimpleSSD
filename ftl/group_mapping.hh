@@ -23,7 +23,7 @@ class GroupMapping : public AbstractFTL {
   // index>（当bRandomTweak=false时是一一对应的） vector长度等于bitsetSize
   std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>> table;
   // 统计lpn已映射的subpage数量（递增）
-  std::unordered_map<uint64_t, std::pair<uint32_t,uint32_t>> baseAndDeltaCounts;//second初始-1 TODO：若req.idx不是按顺序出现，那必须更换数据结构
+  std::unordered_map<uint64_t, Bitset> groupUsedIoUnit;
   // （映射中的）block index 映射的Block instance
   std::unordered_map<uint32_t, Block> blocks;
   // 空闲物理块列表

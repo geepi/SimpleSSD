@@ -341,8 +341,8 @@ bool Block::write(uint32_t pageIndex, uint64_t lpn, uint32_t idx,
 
       ppLPNs[pageIndex][idx] = lpn;
     }
-
-    pNextWritePageIndex[idx] = pageIndex + 1;//更新
+    if (pageIndex >= pNextWritePageIndex[idx])
+      pNextWritePageIndex[idx] = pageIndex + 1;//更新
   }
   else {
     panic("Write to non erased page");
