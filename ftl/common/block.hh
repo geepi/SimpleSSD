@@ -58,7 +58,7 @@ class Block {
   Block &operator=(const Block &);  // Copy assignment
   Block &operator=(Block &&);       // Move assignment
 
-  const Bitset &getValidBits(uint32_t);
+  Bitset &getValidBits(uint32_t);
   Bitset &getErasedBits(uint32_t);
   uint32_t getBlockIndex() const;
   uint64_t getLastAccessedTime();

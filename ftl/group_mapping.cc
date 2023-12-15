@@ -17,7 +17,6 @@ GroupMapping::GroupMapping(ConfigReader &c, Parameter &p, PAL::PAL *l,
       pPAL(l),
       conf(c),
       lastFreeBlock(param.pageCountToMaxPerf),
-      lastFreeBlockIOMap(param.ioUnitInPage),
       bReclaimMore(false) {
   blocks.reserve(param.totalPhysicalBlocks);  // 预留足够的空间
   table.reserve(param.totalLogicalBlocks);
@@ -38,7 +37,6 @@ GroupMapping::GroupMapping(ConfigReader &c, Parameter &p, PAL::PAL *l,
   }
 
   lastFreeBlockIndex = 0;
-  lastBlockIdx = 0;
 
   memset(&stat, 0, sizeof(stat));
 
@@ -341,22 +339,13 @@ uint32_t GroupMapping::getFreeBlock(uint32_t idx) {
   return blockIndex;
 }
 
-uint32_t GroupMapping::getLastFreeBlock(Bitset &iomap) {
-  if (!bRandomTweak || (lastFreeBlockIOMap & iomap).any()) {
-    lastFreeBlockIndex++;
-
-    if (lastFreeBlockIndex == param.pageCountToMaxPerf) {
-      lastFreeBlockIndex = 0;
-    }
-
-    lastFreeBlockIOMap = iomap;
-  }
-  else {
-    lastFreeBlockIOMap |= iomap;
+uint32_t GroupMapping::getLastFreeBlock() {
+  lastFreeBlockIndex++;
+  if (lastFreeBlockIndex == param.pageCountToMaxPerf) {
+    lastFreeBlockIndex = 0;
   }
 
   auto freeBlock = blocks.find(lastFreeBlock.at(lastFreeBlockIndex));
-
   // Sanity check
   if (freeBlock == blocks.end()) {
     panic("Corrupted");
@@ -518,8 +507,8 @@ void GroupMapping::doGarbageCollection(std::vector<uint32_t> &blocksToReclaim,
         }
 
         // Retrive free block
-        auto freeBlock = blocks.find(getLastFreeBlock(
-            bit));  // 这里似乎就是以superPage整组为粒度进行迁移的
+        auto freeBlock = blocks.find(
+            getLastFreeBlock());  // 这里似乎就是以superPage整组为粒度进行迁移的
 
         // Issue Read
         req.blockIndex = block->first;
@@ -676,26 +665,33 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
   uint64_t finishedAt = tick;
   bool readBeforeWrite = false;
   bool isNeedNewBlock = false;
-  if (finishedAt == 279715346347) {
+  if (finishedAt == 4919935057579) {
     std::cerr << "yaya " << std::endl;
   }
-  // for (uint32_t idx = 0; idx < bitsetSize; idx++) {
-  //   if (req.ioFlag.test(idx)) {
-  //     if (idx == 48 && req.lpn == 2927290)
-  //       std::cerr << "yaya " << std::endl;
-  //     // std::cerr << idx << " ";
-  //   }
-  // }
   if (mappingList != table.end()) {
     auto &mapping = mappingList->second;
     if (groupUsedIoUnit.find(req.lpn) != groupUsedIoUnit.end()) {
       Bitset used = groupUsedIoUnit[req.lpn];
-      if (mapping.first == 0 && mapping.second == 1) {
-        // for (uint32_t idx = 0; idx < bitsetSize; idx++) {
-        //   if (used.test(idx))
-        //     std::cerr << idx << " ";
-        // }
-      }
+      // if (mapping.first == 4 && mapping.second == 1) {
+      //   std::cerr << "lpn used:";
+      //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+      //     if (used.test(idx))
+      //       std::cerr << idx << " ";
+      //   }
+      //   std::cerr << std::endl << "request need:";
+      //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+      //     if (req.ioFlag.test(idx))
+      //       std::cerr << idx << " ";
+      //   }
+      //   block = blocks.find(mapping.first);
+      //   Bitset tmp = block->second.getValidBits(mapping.second);
+      //   std::cerr << std::endl << "superPage used:";
+      //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+      //     if (tmp.test(idx))
+      //       std::cerr << idx << " ";
+      //   }
+      //   std::cerr << "-----------------" << std::endl;
+      // }
 
       // 本次请求涉及重写ioUnit（有新的数据重用了lpn），旧page标记为invalid
       if ((req.ioFlag & used).any() || !bRandomTweak) {
@@ -725,12 +721,12 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
     mappingList = ret.first;
 
     isNeedNewBlock = true;
-    groupUsedIoUnit.emplace(req.lpn,
-                            Bitset(param.ioUnitInPage));  // TODO：硬编码
+    groupUsedIoUnit.emplace(req.lpn, Bitset(param.ioUnitInPage));
   }
   // 这里要固定的原因是，假设一个group的请求如果中间插入了其他组的请求，那么这个组有可能会写到两个块上
   // 上次分配的块并不是这个映射项记录的块，这种情况保证一定有空闲空间所以不需要iomap记录
-  if (lastBlockIdx != mappingList->second.first && !isNeedNewBlock) {
+  if (mappingList->second.first < param.totalPhysicalBlocks &&
+      !isNeedNewBlock) {
     block = blocks.find(mappingList->second.first);
   }
   else {
@@ -738,8 +734,8 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
     if (isNeedNewBlock && !req.ioFlag.test(0)) {
       return;
     }
-    block = blocks.find(getLastFreeBlock(req.ioFlag));
-    lastBlockIdx = block->first;
+    block = blocks.find(getLastFreeBlock());
+    // lastBlockIdx = block->first;
   }
 
   if (block == blocks.end()) {
@@ -764,12 +760,6 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
 
   uint32_t pageIndex =
       isNeedNewBlock ? block->second.getNextWritePageIndex(0) : mapping.second;
-  // if (block->first == 0) {
-  //   std::cerr << block->second.getNextWritePageIndex(0) << std::endl;
-  //   if (block->second.getNextWritePageIndex(0) == 205) {
-  //     printf("jaja");
-  //   }
-  // }
   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
     if (req.ioFlag.test(idx) || !bRandomTweak) {
       beginAt = tick;
@@ -818,7 +808,7 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
     }
   }
 
-  if (block->first == 0 && pageIndex == 1) {
+  if (block->first == 4 && pageIndex == 1) {
     std::cerr << "****************" << std::endl;
     for (uint32_t idx = 0; idx < requestCnt[req.lpn].size(); idx++) {
       std::cerr << idx << " " << requestCnt[req.lpn][idx] << std::endl;
@@ -1020,8 +1010,8 @@ void GroupMapping::getStatList(std::vector<Stats> &list, std::string prefix) {
 
   // For the exact definition, see following paper:
   // Li, Yongkun, Patrick PC Lee, and John Lui.
-  // "Stochastic modeling of large-scale solid-state storage systems: analysis,
-  // design tradeoffs and optimization." ACM SIGMETRICS (2013)
+  // "Stochastic modeling of large-scale solid-state storage systems:
+  // analysis, design tradeoffs and optimization." ACM SIGMETRICS (2013)
   temp.name = prefix + "page_mapping.wear_leveling";
   temp.desc = "Wear-leveling factor";
   list.push_back(temp);

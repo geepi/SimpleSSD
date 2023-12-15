@@ -32,9 +32,7 @@ class GroupMapping : public AbstractFTL {
   uint32_t nFreeBlocks;  // For some libraries which std::list::size() is O(n)
   // vector长度等于可以充分并行的page数量（pageCountToMaxPerf=5），优先存放可以并发的块号
   std::vector<uint32_t> lastFreeBlock;
-  Bitset lastFreeBlockIOMap;
   uint32_t lastFreeBlockIndex;//这是数组下标
-  uint32_t lastBlockIdx;//这是上次使用的块号
   std::unordered_map<uint64_t, std::vector<uint32_t>> requestCnt;
 
   bool bReclaimMore;
@@ -53,7 +51,7 @@ class GroupMapping : public AbstractFTL {
   // Search block which is blockIdx % param.pageCountToMaxPerf == idx；
   // if not found then first blockIdx
   uint32_t getFreeBlock(uint32_t);
-  uint32_t getLastFreeBlock(Bitset &);
+  uint32_t getLastFreeBlock();
   void calculateVictimWeight(std::vector<std::pair<uint32_t, float>> &,
                              const EVICT_POLICY, uint64_t);
   void selectVictimBlock(std::vector<uint32_t> &, uint64_t &);

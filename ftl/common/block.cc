@@ -173,7 +173,7 @@ Block &Block::operator=(Block &&rhs) {
 
   return *this;
 }
-const Bitset& Block::getValidBits(uint32_t idx) {
+Bitset& Block::getValidBits(uint32_t idx) {
   if (ioUnitInPage > 1) {
     return validBits[idx];
   }
