@@ -691,12 +691,13 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
       if ((req.ioFlag & used).any() || !bRandomTweak) {
         block = blocks.find(mapping.first);
         block->second.getErasedBits(mapping.second).set();
+        // Do trim
         for (uint32_t idx = 0; idx < bitsetSize; idx++) {
           block->second.invalidate(mapping.second, idx);
         }
-        isNeedNewBlock = true;
         groupUsedIoUnit[req.lpn].reset();
         // requestCnt[req.lpn].clear();
+        isNeedNewBlock = true;
       }
     }
   }
@@ -866,16 +867,14 @@ void GroupMapping::trimInternal(Request &req, uint64_t &tick) {
     else {
       pDRAM->read(&(*mappingList), 8, tick);
     }
+    auto &mapping = mappingList->second;
+    auto block = blocks.find(mapping.first);
 
+    if (block == blocks.end()) {
+      panic("Block is not in use");
+    }
     // Do trim
     for (uint32_t idx = 0; idx < bitsetSize; idx++) {
-      auto &mapping = mappingList->second;
-      auto block = blocks.find(mapping.first);
-
-      if (block == blocks.end()) {
-        panic("Block is not in use");
-      }
-
       block->second.invalidate(mapping.second, idx);
     }
 
