@@ -194,9 +194,6 @@ void GroupMapping::read(Request &req, uint64_t &tick) {
 
 void GroupMapping::write(Request &req, uint64_t &tick) {
   uint64_t begin = tick;
-  if (tick == 2956140698755) {
-    printf("haha");
-  }
   if (req.ioFlag.count() > 0) {
     writeInternal(req, tick);
 
@@ -611,7 +608,8 @@ void GroupMapping::readInternal(Request &req, uint64_t &tick) {
 
   auto mappingList = table.find(req.lpn);
 
-  if (mappingList != table.end()) {
+  if (mappingList != table.end() &&
+      (groupUsedIoUnit[req.lpn] & req.ioFlag).any()) {
     if (bRandomTweak) {
       pDRAM->read(&(*mappingList), 8 * req.ioFlag.count(), tick);
     }
@@ -622,7 +620,6 @@ void GroupMapping::readInternal(Request &req, uint64_t &tick) {
     for (uint32_t idx = 0; idx < bitsetSize; idx++) {
       if (req.ioFlag.test(idx) || !bRandomTweak) {
         auto &mapping = mappingList->second;
-
         if (mapping.first < param.totalPhysicalBlocks &&
             mapping.second < param.pagesInBlock) {
           palRequest.blockIndex = mapping.first;
@@ -665,9 +662,6 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
   uint64_t finishedAt = tick;
   bool readBeforeWrite = false;
   bool isNeedNewBlock = false;
-  if (finishedAt == 4919935057579) {
-    std::cerr << "yaya " << std::endl;
-  }
   if (mappingList != table.end()) {
     auto &mapping = mappingList->second;
     if (groupUsedIoUnit.find(req.lpn) != groupUsedIoUnit.end()) {
@@ -696,14 +690,13 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
       // 本次请求涉及重写ioUnit（有新的数据重用了lpn），旧page标记为invalid
       if ((req.ioFlag & used).any() || !bRandomTweak) {
         block = blocks.find(mapping.first);
-        // 整superPage都标记为无效 TODO
         block->second.getErasedBits(mapping.second).set();
         for (uint32_t idx = 0; idx < bitsetSize; idx++) {
           block->second.invalidate(mapping.second, idx);
         }
         isNeedNewBlock = true;
         groupUsedIoUnit[req.lpn].reset();
-        requestCnt[req.lpn].clear();
+        // requestCnt[req.lpn].clear();
       }
     }
   }
@@ -741,7 +734,7 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
   if (block == blocks.end()) {
     panic("No such block");
   }
-  if (sendToPAL) {
+  if (sendToPAL && req.ioFlag.test(0)) {
     if (bRandomTweak) {
       pDRAM->read(&(*mappingList), 8 * req.ioFlag.count(), tick);
       pDRAM->write(&(*mappingList), 8 * req.ioFlag.count(), tick);
@@ -763,7 +756,7 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
     if (req.ioFlag.test(idx) || !bRandomTweak) {
       beginAt = tick;
-      requestCnt[req.lpn].push_back(idx);
+      // requestCnt[req.lpn].push_back(idx);
       if (groupUsedIoUnit[req.lpn].test(idx)) {
         panic("Write to already used page");
       }
@@ -808,27 +801,27 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
     }
   }
 
-  if (block->first == 4 && pageIndex == 1) {
-    std::cerr << "****************" << std::endl;
-    for (uint32_t idx = 0; idx < requestCnt[req.lpn].size(); idx++) {
-      std::cerr << idx << " " << requestCnt[req.lpn][idx] << std::endl;
-    }
-    for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
-      if (groupUsedIoUnit[req.lpn].test(idx))
-        std::cerr << idx << " used" << std::endl;
-    }
-    Bitset tmp = block->second.getValidBits(pageIndex);
-    Bitset tmp2 = block->second.getErasedBits(pageIndex);
-    for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
-      if (tmp.test(idx)) {
-        std::cerr << idx << " allocated |";
-      }
-      if (tmp2.test(idx)) {
-        std::cerr << idx << " erased";
-      }
-      std::cerr << std::endl;
-    }
-  }
+  // if (block->first == 4 && pageIndex == 1) {
+  //   std::cerr << "****************" << std::endl;
+  //   // for (uint32_t idx = 0; idx < requestCnt[req.lpn].size(); idx++) {
+  //   //   std::cerr << idx << " " << requestCnt[req.lpn][idx] << std::endl;
+  //   // }
+  //   for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
+  //     if (groupUsedIoUnit[req.lpn].test(idx))
+  //       std::cerr << idx << " used" << std::endl;
+  //   }
+  //   Bitset tmp = block->second.getValidBits(pageIndex);
+  //   Bitset tmp2 = block->second.getErasedBits(pageIndex);
+  //   for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
+  //     if (tmp.test(idx)) {
+  //       std::cerr << idx << " allocated |";
+  //     }
+  //     if (tmp2.test(idx)) {
+  //       std::cerr << idx << " erased";
+  //     }
+  //     std::cerr << std::endl;
+  //   }
+  // }
   // Exclude CPU operation when initializing
   if (sendToPAL) {
     tick = finishedAt;
