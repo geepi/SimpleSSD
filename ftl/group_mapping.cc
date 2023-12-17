@@ -503,9 +503,8 @@ void GroupMapping::doGarbageCollection(std::vector<uint32_t> &blocksToReclaim,
           bit.set();
         }
 
-        // Retrive free block
-        auto freeBlock = blocks.find(
-            getLastFreeBlock());  // 这里似乎就是以superPage整组为粒度进行迁移的
+        // Retrive free block 选择一个具有完整空闲superPage的block
+        auto freeBlock = blocks.find(getLastFreeBlock());
 
         // Issue Read
         req.blockIndex = block->first;
@@ -514,30 +513,30 @@ void GroupMapping::doGarbageCollection(std::vector<uint32_t> &blocksToReclaim,
 
         readRequests.push_back(req);
 
+        // 不影响groupUsedIoUnit的映射关系(物理位置的变化不影响lpn的使用ioUnit情况)
         // Update mapping table
         uint32_t newBlockIdx = freeBlock->first;
+        uint32_t newPageIdx = freeBlock->second.getNextWritePageIndex(0);
 
-        for (uint32_t idx = 0; idx < bitsetSize;
-             idx++) {  // TODO：这里可以改为遍历base index/delta
-                       // index，避免比较bit
+        auto mappingList = table.find(lpns.at(0));
+
+        if (mappingList == table.end()) {
+          panic("Invalid mapping table entry");
+        }
+
+        pDRAM->read(&(*mappingList), 8 * param.ioUnitInPage, tick);
+
+        auto &mapping = mappingList->second;
+
+        mapping.first = newBlockIdx;
+        mapping.second = newPageIdx;
+        for (uint32_t idx = 0; idx < bitsetSize; idx++) {
           if (bit.test(idx)) {
+            if (lpns.at(0) != lpns.at(idx)) {
+              panic("superPage not mapping to the same lpn");
+            }
             // Invalidate
             block->second.invalidate(pageIndex, idx);
-
-            auto mappingList = table.find(lpns.at(idx));
-
-            if (mappingList == table.end()) {
-              panic("Invalid mapping table entry");
-            }
-
-            pDRAM->read(&(*mappingList), 8 * param.ioUnitInPage, tick);
-
-            auto &mapping = mappingList->second;
-
-            uint32_t newPageIdx = freeBlock->second.getNextWritePageIndex(idx);
-
-            mapping.first = newBlockIdx;
-            mapping.second = newPageIdx;  // TODO:检查newPageIdx是否整组都一致
 
             freeBlock->second.write(newPageIdx, lpns.at(idx), idx, beginAt);
 
