@@ -33,8 +33,11 @@ class GroupMapping : public AbstractFTL {
   // vector长度等于可以充分并行的page数量（pageCountToMaxPerf=5），优先存放可以并发的块号
   std::vector<uint32_t> lastFreeBlock;
   uint32_t lastFreeBlockIndex;//这是数组下标
-  std::unordered_map<uint64_t, std::vector<uint32_t>> requestCnt;
-
+  // std::unordered_map<uint64_t, std::vector<uint32_t>> requestCnt;
+  uint32_t cnt1;
+  std::vector<uint32_t> cnt2;
+  uint32_t cnt3;
+  uint32_t remap_cnt;
   bool bReclaimMore;
   bool bRandomTweak;    // true
   uint32_t bitsetSize;  // 96(bRandomTweak ? param.ioUnitInPage : 1)

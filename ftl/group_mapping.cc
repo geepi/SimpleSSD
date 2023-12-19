@@ -22,7 +22,11 @@ GroupMapping::GroupMapping(ConfigReader &c, Parameter &p, PAL::PAL *l,
   table.reserve(param.totalLogicalBlocks);
   groupUsedIoUnit.reserve(param.totalLogicalBlocks);
   // table.reserve(param.totalLogicalBlocks * param.pagesInBlock);
-  requestCnt.reserve(param.totalPhysicalBlocks);
+  // requestCnt.reserve(param.totalPhysicalBlocks);
+  cnt1 = 0;
+  // cnt2 = 0;
+  cnt3 = 0;
+  remap_cnt = 0;
   for (uint32_t i = 0; i < param.totalPhysicalBlocks; i++) {
     freeBlocks.emplace_back(Block(i, param.pagesInBlock, param.ioUnitInPage));
   }
@@ -53,6 +57,12 @@ GroupMapping::~GroupMapping() {
   //     }
   //   }
   // }
+  std::cerr << "Unqualified Request: " << cnt1 << " " << cnt2.size() << " "
+            << cnt3 << std::endl;
+  // for (auto idx : cnt2) {
+  //   std::cerr << idx << " ";
+  // }
+  std::cerr << std::endl << "remapping times " << remap_cnt << std::endl;
 }
 
 bool GroupMapping::initialize() {
@@ -477,6 +487,7 @@ void GroupMapping::doGarbageCollection(std::vector<uint32_t> &blocksToReclaim,
   std::vector<PAL::Request> writeRequests;
   std::vector<PAL::Request> eraseRequests;
   std::vector<uint64_t> lpns;
+  uint64_t lpn = 0;
   Bitset bit(param.ioUnitInPage);
   uint64_t beginAt;
   uint64_t readFinishedAt = tick;
@@ -516,9 +527,15 @@ void GroupMapping::doGarbageCollection(std::vector<uint32_t> &blocksToReclaim,
         // 不影响groupUsedIoUnit的映射关系(物理位置的变化不影响lpn的使用ioUnit情况)
         // Update mapping table
         uint32_t newBlockIdx = freeBlock->first;
-        uint32_t newPageIdx = freeBlock->second.getNextWritePageIndex(0);
-
-        auto mappingList = table.find(lpns.at(0));
+        uint32_t newPageIdx = freeBlock->second.getNextWritePageIndex();
+        
+        for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
+          if (lpns.at(idx) != 0) {
+            lpn = lpns.at(idx);
+            break;
+          }
+        }
+        auto mappingList = table.find(lpn);
 
         if (mappingList == table.end()) {
           panic("Invalid mapping table entry");
@@ -660,75 +677,94 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
   uint64_t beginAt;
   uint64_t finishedAt = tick;
   bool readBeforeWrite = false;
-  bool isNeedNewBlock = false;
-  if (mappingList != table.end()) {
+  bool isNeedNewBlock = true;
+  if (mappingList != table.end() &&
+      groupUsedIoUnit.find(req.lpn) != groupUsedIoUnit.end()) {
+    isNeedNewBlock = false;
     auto &mapping = mappingList->second;
-    if (groupUsedIoUnit.find(req.lpn) != groupUsedIoUnit.end()) {
-      Bitset used = groupUsedIoUnit[req.lpn];
-      // if (mapping.first == 4 && mapping.second == 1) {
-      //   std::cerr << "lpn used:";
-      //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
-      //     if (used.test(idx))
-      //       std::cerr << idx << " ";
-      //   }
-      //   std::cerr << std::endl << "request need:";
-      //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
-      //     if (req.ioFlag.test(idx))
-      //       std::cerr << idx << " ";
-      //   }
-      //   block = blocks.find(mapping.first);
-      //   Bitset tmp = block->second.getValidBits(mapping.second);
-      //   std::cerr << std::endl << "superPage used:";
-      //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
-      //     if (tmp.test(idx))
-      //       std::cerr << idx << " ";
-      //   }
-      //   std::cerr << "-----------------" << std::endl;
-      // }
+    Bitset used = groupUsedIoUnit[req.lpn];
+    // check 可删
+    block = blocks.find(mapping.first);
+    if (used != block->second.getValidBits(mapping.second)) {
+      panic("group used not the same as physical record");
+    }
+    // if (mapping.first == 1 && mapping.second == 0) {
+    //   std::cerr << "lpn used:";
+    //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+    //     if (used.test(idx))
+    //       std::cerr << idx << " ";
+    //   }
+    //   std::cerr << std::endl << "request need:";
+    //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+    //     if (req.ioFlag.test(idx))
+    //       std::cerr << idx << " ";
+    //   }
+    //   block = blocks.find(mapping.first);
+    //   Bitset tmp = block->second.getValidBits(mapping.second);
+    //   std::cerr << std::endl << "superPage used:";
+    //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+    //     if (tmp.test(idx))
+    //       std::cerr << idx << " ";
+    //   }
+    //   std::cerr << std::endl << "-----------------" << std::endl;
+    // }
 
-      // 本次请求涉及重写ioUnit（有新的数据重用了lpn），旧page标记为invalid
-      if ((req.ioFlag & used).any() || !bRandomTweak) {
-        block = blocks.find(mapping.first);
-        block->second.getErasedBits(mapping.second).set();
-        // Do trim
-        for (uint32_t idx = 0; idx < bitsetSize; idx++) {
-          block->second.invalidate(mapping.second, idx);
-        }
-        groupUsedIoUnit[req.lpn].reset();
-        // requestCnt[req.lpn].clear();
-        isNeedNewBlock = true;
+    // 本次请求涉及重写ioUnit（有新的数据重用了lpn），旧page标记为invalid
+    if ((req.ioFlag & used).any() || !bRandomTweak) {
+      // if (!req.ioFlag.test(0)) {
+      //   cnt1++;
+      //   return;
+      // }
+      isNeedNewBlock = true;
+      remap_cnt++;
+      block = blocks.find(mapping.first);
+      block->second.getErasedBits(mapping.second).reset();
+      // Do trim
+      for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+        block->second.invalidate(mapping.second, idx);
       }
+      // Remove mapping
+      table.erase(mappingList);
+      groupUsedIoUnit.erase(req.lpn);
+      // requestCnt[req.lpn].clear();
     }
   }
-  else {
+
+  if (isNeedNewBlock) {
     // 必须是idx=0的请求才可以分配一个superPage，其余情况属于不合规范的负载，不予操作！
-    if (!req.ioFlag.test(0)) {
-      return;  // TODO：统计丢弃的次数，丢弃的idx
-    }
+    // if (!req.ioFlag.test(0)) {
+    //   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
+    //     if (req.ioFlag.test(idx)) {
+    //       cnt2.push_back(idx);
+    //     }
+    //   }
+    //   return;
+    // }
     // Create empty mapping
     auto ret = table.emplace(
         req.lpn, make_pair(param.totalPhysicalBlocks, param.pagesInBlock));
+    groupUsedIoUnit.emplace(req.lpn, Bitset(param.ioUnitInPage));
     if (!ret.second) {
       panic("Failed to insert new mapping");
     }
     mappingList = ret.first;
-
-    isNeedNewBlock = true;
-    groupUsedIoUnit.emplace(req.lpn, Bitset(param.ioUnitInPage));
   }
   // 这里要固定的原因是，假设一个group的请求如果中间插入了其他组的请求，那么这个组有可能会写到两个块上
   // 上次分配的块并不是这个映射项记录的块，这种情况保证一定有空闲空间所以不需要iomap记录
   if (mappingList->second.first < param.totalPhysicalBlocks &&
-      !isNeedNewBlock) {
+      mappingList->second.second < param.pagesInBlock) {
     block = blocks.find(mappingList->second.first);
   }
   else {
     // 必须是idx=0的请求才可以分配一个superPage，其余情况属于不合规范的负载，不予操作！
-    if (isNeedNewBlock && !req.ioFlag.test(0)) {
-      return;
+    // if (isNeedNewBlock && !req.ioFlag.test(0)) {
+    //   cnt3++;
+    //   return;
+    // }
+    if (groupUsedIoUnit[req.lpn].count() > 0) {
+      panic("not empty group");
     }
     block = blocks.find(getLastFreeBlock());
-    // lastBlockIdx = block->first;
   }
 
   if (block == blocks.end()) {
@@ -752,7 +788,7 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
   auto &mapping = mappingList->second;
 
   uint32_t pageIndex =
-      isNeedNewBlock ? block->second.getNextWritePageIndex(0) : mapping.second;
+      isNeedNewBlock ? block->second.getNextWritePageIndex() : mapping.second;
   for (uint32_t idx = 0; idx < bitsetSize; idx++) {
     if (req.ioFlag.test(idx) || !bRandomTweak) {
       beginAt = tick;
@@ -801,14 +837,14 @@ void GroupMapping::writeInternal(Request &req, uint64_t &tick, bool sendToPAL) {
     }
   }
 
-  // if (block->first == 4 && pageIndex == 1) {
+  // if (block->first == 1 && pageIndex == 0) {
   //   std::cerr << "****************" << std::endl;
   //   // for (uint32_t idx = 0; idx < requestCnt[req.lpn].size(); idx++) {
   //   //   std::cerr << idx << " " << requestCnt[req.lpn][idx] << std::endl;
   //   // }
   //   for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
   //     if (groupUsedIoUnit[req.lpn].test(idx))
-  //       std::cerr << idx << " used" << std::endl;
+  //       std::cerr << idx << " " << req.lpn << " used" << std::endl;
   //   }
   //   Bitset tmp = block->second.getValidBits(pageIndex);
   //   Bitset tmp2 = block->second.getErasedBits(pageIndex);
