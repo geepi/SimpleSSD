@@ -528,9 +528,9 @@ void GroupMapping::doGarbageCollection(std::vector<uint32_t> &blocksToReclaim,
         // Update mapping table
         uint32_t newBlockIdx = freeBlock->first;
         uint32_t newPageIdx = freeBlock->second.getNextWritePageIndex();
-        
+
         for (uint32_t idx = 0; idx < param.ioUnitInPage; idx++) {
-          if (lpns.at(idx) != 0) {
+          if (bit.test(idx) && lpns.at(idx) != 0) {
             lpn = lpns.at(idx);
             break;
           }
@@ -549,9 +549,6 @@ void GroupMapping::doGarbageCollection(std::vector<uint32_t> &blocksToReclaim,
         mapping.second = newPageIdx;
         for (uint32_t idx = 0; idx < bitsetSize; idx++) {
           if (bit.test(idx)) {
-            if (lpns.at(0) != lpns.at(idx)) {
-              panic("superPage not mapping to the same lpn");
-            }
             // Invalidate
             block->second.invalidate(pageIndex, idx);
 
