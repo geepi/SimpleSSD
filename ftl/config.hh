@@ -29,6 +29,7 @@ namespace FTL {
 typedef enum {
   /* Common FTL configuration */
   FTL_MAPPING_MODE,
+  FTL_GROUP_MAPPING,
   FTL_OVERPROVISION_RATIO,
   FTL_GC_THRESHOLD_RATIO,
   FTL_BAD_BLOCK_THRESHOLD,
@@ -73,6 +74,7 @@ typedef enum {
 class Config : public BaseConfig {
  private:
   MAPPING mapping;             //!< Default: PAGE_MAPPING
+  uint64_t groupMappingSize;
   float overProvision;         //!< Default: 0.25 (25%)
   float gcThreshold;           //!< Default: 0.05 (5%)
   uint64_t badBlockThreshold;  //!< Default: 100000

@@ -26,6 +26,7 @@ namespace SimpleSSD {
 namespace FTL {
 
 const char NAME_MAPPING_MODE[] = "MappingMode";
+const char NAME_GROUP_MAPPING_SIZE[] = "GroupMappingSize";
 const char NAME_OVERPROVISION_RATIO[] = "OverProvisioningRatio";
 const char NAME_GC_THRESHOLD[] = "GCThreshold";
 const char NAME_BAD_BLOCK_THRESHOLD[] = "EraseThreshold";
@@ -60,6 +61,9 @@ bool Config::setConfig(const char *name, const char *value) {
 
   if (MATCH_NAME(NAME_MAPPING_MODE)) {
     mapping = (MAPPING)strtoul(value, nullptr, 10);
+  }
+  else if (MATCH_NAME(NAME_GROUP_MAPPING_SIZE)) {
+    groupMappingSize = strtoul(value, nullptr, 10);
   }
   else if (MATCH_NAME(NAME_OVERPROVISION_RATIO)) {
     overProvision = strtof(value, nullptr);
@@ -129,6 +133,8 @@ int64_t Config::readInt(uint32_t idx) {
     case FTL_MAPPING_MODE:
       ret = mapping;
       break;
+    case FTL_GROUP_MAPPING:
+      ret = groupMappingSize;
     case FTL_GC_MODE:
       ret = gcMode;
       break;
